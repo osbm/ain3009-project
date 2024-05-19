@@ -11,3 +11,4 @@ pillow
 pynvml
 psutil
 virtualenv
+hyperopt
