@@ -268,6 +268,7 @@ def train_model(
 
         pd.DataFrame(history).to_csv("history.csv", index=False)
         mlflow.log_artifact("history.csv")
+        return history["valid_f1"][-1]
 
 
 if __name__ == "__main__":
