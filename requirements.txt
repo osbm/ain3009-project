@@ -1,0 +1,13 @@
+mlflow
+torch
+torchvision
+scikit-learn
+numpy
+pandas
+albumentations
+matplotlib
+seaborn
+pillow
+pynvml
+psutil
+virtualenv
