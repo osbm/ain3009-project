@@ -1,2 +1,4 @@
 data/
 .venv
+best_*
+history.csv
