@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from torchvision import transforms
 from mlflow import log_metric, log_param, log_artifacts
-from torcheval.metrics import BinaryF1Score, BinaryAccuracy
+from torcheval.metrics import BinaryF1Score, BinaryAccuracy, BinaryConfusionMatrix
 import mlflow
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -41,15 +41,46 @@ class CatsDogsDataset(torch.utils.data.Dataset):
             image = self.image_cache[image_path]
 
         label = self.df.iloc[idx]['image_class']
-        # print(image.shape)
         if self.transform is not None:
             image = self.transform(image)
         
         return image, torch.tensor([self.label2int[label]], dtype=torch.float32)
 
-if __name__ == "__main__":
+class CatsDogsDatasetNoCache(torch.utils.data.Dataset):
+    def __init__(self, df, transform=None):
+        self.df = df
+        self.transform = transform
+        self.label2int = {"Cat":0, "Dog":1}
+    
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        image_path = self.df.iloc[idx]['image_path']
+
+        image = Image.open(image_path)
+        image = image.convert('RGB')
+        image = np.array(image)
+        image = torch.from_numpy(image)
+        image = image.float() / 255
+        image = image.permute(2, 0, 1)
+
+        label = self.df.iloc[idx]['image_class']
+        if self.transform is not None:
+            image = self.transform(image)
+        
+        return image, torch.tensor([self.label2int[label]], dtype=torch.float32)
+
+def train_model(
+    seed=42,
+    num_epochs=10,
+    batch_size=32,
+    final_size=224,
+    color_jitter=0.2,
+    test_size=0.1,
+    rotation=20, 
+):
     df = pd.read_csv("data/data.csv")
-    seed = 42
 
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -58,30 +89,36 @@ if __name__ == "__main__":
 
     train_df, valid_df = train_test_split(
         df,
-        test_size=0.1,
+        test_size=test_size,
         random_state=seed,
         stratify=df["image_class"]
     )
-    final_size = 224
     train_transform = transforms.Compose([
         transforms.ToPILImage(),                # Convert the image to a PIL Image
         transforms.Resize((final_size, final_size)), # Resize the image to final_size x final_size
         # transforms.RandomResizedCrop(final_size), # Crop the image to a random size and aspect ratio
         transforms.RandomHorizontalFlip(),     # Randomly flip the image horizontally
-        transforms.ColorJitter(0.2, 0.2, 0.2), # Randomly adjust brightness, contrast, saturation, and hue
-        transforms.RandomRotation(20),         # Randomly rotate the image by up to 20 degrees
+        transforms.ColorJitter(color_jitter, color_jitter, color_jitter), # Randomly adjust brightness, contrast, saturation, and hue
+        transforms.RandomRotation(rotation),         # Randomly rotate the image by up to 20 degrees
         transforms.ToTensor(),                 # Convert the image to a PyTorch tensor
+        transforms.Normalize(                  # Normalize the image
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
+        )
     ])
 
     valid_transform = transforms.Compose([
         transforms.ToPILImage(),                # Convert the image to a PIL Image
         transforms.Resize((final_size, final_size)), # Resize the image to final_size x final_size
         transforms.ToTensor(),                 # Convert the image to a PyTorch tensor
+        transforms.Normalize(                  # Normalize the image
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
+        )
     ])
 
-    train_ds = CatsDogsDataset(train_df, transform=train_transform)
-    valid_ds = CatsDogsDataset(valid_df, transform=valid_transform)
-    batch_size = 32
+    train_ds = CatsDogsDatasetNoCache(train_df, transform=train_transform)
+    valid_ds = CatsDogsDatasetNoCache(valid_df, transform=valid_transform)
     train_loader = torch.utils.data.DataLoader(
         train_ds,
         batch_size=batch_size,
@@ -96,7 +133,6 @@ if __name__ == "__main__":
 
     device = torch.device("cuda")
 
-    num_epochs = 20
 
     model = models.resnet50(pretrained=True)
     num_ftrs = model.fc.in_features
@@ -108,6 +144,7 @@ if __name__ == "__main__":
 
     f1_score = BinaryF1Score()
     accuracy_score = BinaryAccuracy()
+    confusion_matrix = BinaryConfusionMatrix()
 
     history = {
         "train_loss": [],
@@ -176,10 +213,26 @@ if __name__ == "__main__":
 
                     f1_score.update(torch.sigmoid(output).squeeze(), y.squeeze())
                     accuracy_score.update(torch.sigmoid(output).squeeze(), y.squeeze())
+                    confusion_matrix.update(torch.sigmoid(output).squeeze(), y.squeeze().long())
 
             history["valid_loss"].append(valid_loss / len(valid_loader))
             history["valid_accuracy"].append(accuracy_score.compute())
             history["valid_f1"].append(f1_score.compute())
+
+            confusion_matrix_values = confusion_matrix.compute()
+            confusion_matrix.reset()
+            print(confusion_matrix_values)
+
+            cm_df = pd.DataFrame(confusion_matrix_values, index=["True 0", "True 1"], columns=["Predicted 0", "Predicted 1"])
+            plt.figure(figsize=(10, 7))
+            cm_df = cm_df.astype(int)
+            sns.heatmap(cm_df, annot=True, fmt="d", cmap="Blues")
+            plt.title("Confusion Matrix")
+            plt.xlabel("Predicted")
+            plt.ylabel("True")
+            plt.savefig("confusion_matrix.png")
+            mlflow.log_artifact("confusion_matrix.png")
+
 
             accuracy_score.reset()
             f1_score.reset()
@@ -216,3 +269,6 @@ if __name__ == "__main__":
         pd.DataFrame(history).to_csv("history.csv", index=False)
         mlflow.log_artifact("history.csv")
 
+
+if __name__ == "__main__":
+    train_model()
