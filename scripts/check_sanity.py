@@ -21,7 +21,7 @@ for i in tqdm(range(12500)):
 print("everything is well")
 
 print(r'''
-    \    /\
+   \    /\
     )  ( ')
     (  /  )
      \(__)|''')
