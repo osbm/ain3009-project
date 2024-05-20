@@ -1,0 +1,15 @@
+artifact_uri: file:///home/osbm/Documents/github/ain3009-project/mlruns/481616812065881245/572b8bfd6da2483f871e61d8d89d5bc2/artifacts
+end_time: 1716153310123
+entry_point_name: ''
+experiment_id: '481616812065881245'
+lifecycle_stage: active
+run_id: 572b8bfd6da2483f871e61d8d89d5bc2
+run_name: delicate-grouse-129
+run_uuid: 572b8bfd6da2483f871e61d8d89d5bc2
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1716153200222
+status: 4
+tags: []
+user_id: osbm
